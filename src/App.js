@@ -1,6 +1,5 @@
-import logo from './logo.svg';
-import './App.css';
-import PreviewPort from './components/PreviewPort';
+import "./App.css";
+import PreviewPort from "./components/PreviewPort";
 
 function App() {
   return (
