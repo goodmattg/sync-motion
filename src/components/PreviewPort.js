@@ -5,21 +5,36 @@ import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import LoadingButton from '@mui/lab/LoadingButton';
 
+class PreviewPort extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            video_1: null,
+            video_2: null
+        }
+    }
 
-export default function PreviewPort() {
-    return (
-        <Box sx={{ flexGrow: 1 }}>
-            <Grid container spacing={2} justifyContent="center">
-                <Grid item xs={6}>
-                    <VideoUploadCard></VideoUploadCard>
+    uploadClick = () => {
+        console.log('Upload clicked');
+    }
+    render() {
+        return (
+            <Box sx={{ flexGrow: 1 }}>
+                <Grid container spacing={2} justifyContent="center">
+                    <Grid item xs={6}>
+                        <VideoUploadCard id="1"></VideoUploadCard>
+                    </Grid>
+                    <Grid item xs={6}>
+                        <VideoUploadCard id="2"></VideoUploadCard>
+                    </Grid>
+                    <Grid item xs={12} md={8} lg={6}>
+                        <LoadingButton size="large" variant="outlined" onClick={this.uploadClick}>Align!</LoadingButton>
+                    </Grid>
                 </Grid>
-                <Grid VideoUploadCard xs={6}>
-                    <VideoUploadCard></VideoUploadCard>
-                </Grid>
-                <Grid item xs={12} md={8} lg={6}>
-                    <LoadingButton size="large" variant="outlined">Align!</LoadingButton>
-                </Grid>
-            </Grid>
-        </Box>
-    )
-};
+            </Box>
+        )
+    }
+}
+
+
+export default PreviewPort;
