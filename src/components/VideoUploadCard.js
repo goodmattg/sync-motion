@@ -44,15 +44,31 @@ class VideoUploadCard extends React.Component {
 
     async componentDidUpdate() {
         if (this.state.selectedFileURL) {
+            let cardId = `${this.props.id}-card`
+            let cardElement = document.getElementById(cardId)
+            var video = cardElement.getElementsByTagName('video')[0]
+
             var mp4box = MP4Box.createFile()
             let blob = await fetch(this.state.selectedFileURL).then((r) =>
                 r.blob()
             )
             let buffer = await blob.arrayBuffer()
             buffer.fileStart = 0
-            mp4box.onError = function (e) {}
+            mp4box.onError = function (e) {
+                console.log('MP4Box error!')
+            }
             mp4box.onReady = function (info) {
-                console.log(info)
+                /* create a texttrack */
+                var textTrack = video.addTextTrack(
+                    'metadata',
+                    'Text track for extraction of track ' + info.tracks[0].id
+                )
+                mp4box.onSamples = function (id, user, samples) {
+                    // Note: this does get all 72 samples, but they are incomplete?
+                    console.log('Extracted')
+                }
+                mp4box.setExtractionOptions(info.tracks[0].id, textTrack, {})
+                mp4box.start()
             }
             mp4box.appendBuffer(buffer)
         }
