@@ -10,7 +10,8 @@ import IconButton from '@mui/material/IconButton'
 import PhotoCamera from '@mui/icons-material/PhotoCamera'
 import { CardMedia } from '@mui/material'
 
-import * as MP4Box from '../mp4box.all'
+import * as mpPose from '@mediapipe/pose'
+import * as drawingUtils from '@mediapipe/drawing_utils'
 
 const Input = styled('input')({
     display: 'none',
@@ -26,51 +27,158 @@ class VideoUploadCard extends React.Component {
             isSelected: false,
             videoFrames: [],
             videoKeypoints: [],
+            //
+            nextKeypoints: 0,
+            // pulled from the web codecs example
+            frames: 0,
+            consume: 0,
         }
     }
 
     onResults = (results) => {
+        let canvasId = `${this.props.id}-output-canvas`
+        let canvas = document.getElementById(canvasId)
+        let ctx = canvas.getContext('2d')
+        // Draw the overlays.
+        ctx.save()
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height)
+
         if (results.poseLandmarks) {
-            this.setState((prevState) => ({
-                videoKeypoints: [
-                    ...prevState.videoKeypoints,
-                    results.poseLandmarks,
-                ],
-            }))
-            console.log(this.state.videoKeypoints.length)
-            // videoKeypoints.current.push(results.poseLandmarks)
+            let currentKeypoint = `keypoints-${this.state.nextKeypoints}`
+
+            if (!(currentKeypoint in this.state)) {
+                console.log(`Added keypoints for ${currentKeypoint}`)
+                this.setState((_) => ({
+                    [currentKeypoint]: results.poseLandmarks,
+                }))
+            }
+
+            // this.setState((_) => ({
+            //     [currentKeypoint]: results.poseLandmarks,
+            // }))
+            drawingUtils.drawConnectors(
+                ctx,
+                results.poseLandmarks,
+                mpPose.POSE_CONNECTIONS,
+                { visibilityMin: 0.65, color: 'white' }
+            )
+            drawingUtils.drawLandmarks(
+                ctx,
+                Object.values(mpPose.POSE_LANDMARKS_LEFT).map(
+                    (index) => results.poseLandmarks[index]
+                ),
+                {
+                    visibilityMin: 0.65,
+                    color: 'white',
+                    fillColor: 'rgb(255,138,0)',
+                }
+            )
+            drawingUtils.drawLandmarks(
+                ctx,
+                Object.values(mpPose.POSE_LANDMARKS_RIGHT).map(
+                    (index) => results.poseLandmarks[index]
+                ),
+                {
+                    visibilityMin: 0.65,
+                    color: 'white',
+                    fillColor: 'rgb(0,217,231)',
+                }
+            )
+            drawingUtils.drawLandmarks(
+                ctx,
+                Object.values(mpPose.POSE_LANDMARKS_NEUTRAL).map(
+                    (index) => results.poseLandmarks[index]
+                ),
+                { visibilityMin: 0.65, color: 'white', fillColor: 'white' }
+            )
         }
+        ctx.restore()
     }
 
-    async componentDidUpdate() {
-        if (this.state.selectedFileURL) {
-            let cardId = `${this.props.id}-card`
-            let cardElement = document.getElementById(cardId)
-            var video = cardElement.getElementsByTagName('video')[0]
+    async loadVideo() {
+        let cardId = `${this.props.id}-card`
+        let cardElement = document.getElementById(cardId)
+        var video = cardElement.getElementsByTagName('video')[0]
 
-            var mp4box = MP4Box.createFile()
-            let blob = await fetch(this.state.selectedFileURL).then((r) =>
-                r.blob()
+        let playing = false
+        let timeupdate = false
+
+        video.autoplay = true
+        video.muted = true
+        video.loop = true
+
+        video.play()
+
+        const checkStatus = () => playing && timeupdate
+
+        return new Promise((res, rej) => {
+            video.addEventListener(
+                'playing',
+                () => {
+                    playing = true
+                    if (checkStatus()) {
+                        res(video)
+                    }
+                },
+                true
             )
-            let buffer = await blob.arrayBuffer()
-            buffer.fileStart = 0
-            mp4box.onError = function (e) {
-                console.log('MP4Box error!')
+
+            video.addEventListener(
+                'timeupdate',
+                () => {
+                    timeupdate = true
+                    if (checkStatus()) {
+                        res(video)
+                    }
+                },
+                true
+            )
+        })
+    }
+
+    async componentDidUpdate(prevProps, prevState) {
+        if (this.state.selectedFileURL != prevState.selectedFileURL) {
+            // let cardId = `${this.props.id}-card`
+            // let cardElement = document.getElementById(cardId)
+            // var video = cardElement.getElementsByTagName('video')[0]
+
+            // TODO: Destroy all existing keypoints
+
+            this.props.pose.onResults(this.onResults)
+
+            const video = await this.loadVideo()
+            video.pause()
+            video.currentTime = 0
+
+            let frameCount = 0
+            let start = Date.now()
+            let ended = false
+
+            const cb = async (now, metadata) => {
+                frameCount = metadata.presentedFrames
+                // TODO: FIX BROKEN
+                this.setState((_) => ({
+                    nextKeypoints: metadata.presentedFrames,
+                }))
+                this.props.pose.send({
+                    image: video,
+                    at: metadata.presentedFrames,
+                })
+                video.requestVideoFrameCallback(cb)
+                console.log(metadata.mediaTime, metadata.presentedFrames)
             }
-            mp4box.onReady = function (info) {
-                /* create a texttrack */
-                var textTrack = video.addTextTrack(
-                    'metadata',
-                    'Text track for extraction of track ' + info.tracks[0].id
-                )
-                mp4box.onSamples = function (id, user, samples) {
-                    // Note: this does get all 72 samples, but they are incomplete?
-                    console.log('Extracted')
-                }
-                mp4box.setExtractionOptions(info.tracks[0].id, textTrack, {})
-                mp4box.start()
+            video.onended = () => {
+                console.log('ended')
+                ended = true
+                this.setState((_) => ({
+                    frames: frameCount,
+                    consume: Date.now() - start,
+                }))
             }
-            mp4box.appendBuffer(buffer)
+
+            video.requestVideoFrameCallback(cb)
+            video.play()
         }
     }
 
@@ -81,10 +189,11 @@ class VideoUploadCard extends React.Component {
             selectedFileURL: URL.createObjectURL(file),
             isSelected: true,
         }))
+        console.log('Handle change')
     }
 
     handleSubmission = (e) => {
-        // console.log('HERE')
+        console.log('Handle submission')
     }
 
     render() {
@@ -92,7 +201,7 @@ class VideoUploadCard extends React.Component {
             <div>
                 <Card id={`${this.props.id}-card`} sx={{ minWidth: 275 }}>
                     <CardContent>
-                        {this.state.isSelected ? (
+                        {this.state.selectedFile ? (
                             <div>
                                 <CardMedia
                                     autoPlay
@@ -168,6 +277,11 @@ class VideoUploadCard extends React.Component {
                         <Button size="small">Learn More</Button>
                     </CardActions>
                 </Card>
+                <div display="block" padding="16">
+                    <div>
+                        <canvas id={`${this.props.id}-output-canvas`}></canvas>
+                    </div>
+                </div>
             </div>
         )
     }

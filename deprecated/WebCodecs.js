@@ -180,8 +180,8 @@ export default function App() {
         let frameCount = 0
         let start = Date.now()
         let ended = false
-
-        const cb = (now, metadata) => {
+        x
+        const cb = async (now, metadata) => {
             frameCount++
             video.requestVideoFrameCallback(cb)
             console.log(metadata.mediaTime, metadata.presentedFrames)
